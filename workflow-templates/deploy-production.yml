@@ -1,0 +1,59 @@
+name: Deploy to production
+
+on:
+    push:
+        branches: [$default-branch]
+        paths-ignore:
+            - "**/README.md"
+            - "**/dependabot.yml"
+            - ".github/**"
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@master
+
+            - name: Configure SSH
+              env:
+                  SSH_USER: ${{ secrets.SSH_USER }}
+                  SSH_KEY: ${{ secrets.SSH_KEY }}
+                  SSH_HOST: ${{ secrets.SSH_HOST }}
+              run: |
+                  mkdir -p ~/.ssh/
+                  echo "$SSH_KEY" > ~/.ssh/production
+                  chmod 400 ~/.ssh/production
+                  cat >>~/.ssh/config <<END
+                  Host $SSH_HOST
+                    User $SSH_USER
+                    IdentityFile ~/.ssh/production
+                    StrictHostKeyChecking no
+                  END
+
+            - name: Install envoy for deployment
+              run: composer --no-suggest --no-progress global require "laravel/envoy"
+
+            - name: Create Release Name
+              uses: srfrnk/current-time@master
+              id: release-name
+              with:
+                  format: YYYYMMDDHHmmss
+
+            - name: Run deployment
+              env:
+                  NOVA_USERNAME: ${{ secrets.NOVA_USERNAME }}
+                  NOVA_PASSWORD: ${{ secrets.NOVA_PASSWORD }}
+                  RELEASE_NAME: ${{ steps.release-name.outputs.formattedTime }}
+              run: ~/.composer/vendor/bin/envoy run deploy --nova_username=$NOVA_USERNAME --nova_password=$NOVA_PASSWORD --release=$RELEASE_NAME
+
+            - name: Create Sentry release
+              uses: getsentry/action-release@v1.1.6
+              env:
+                  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+                  SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+                  SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+                  SENTRY_VERSION: ${{ steps.release-name.outputs.formattedTime }}
+              with:
+                  environment: Production
+                  version: ${{ env.SENTRY_VERSION }}

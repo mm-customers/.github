@@ -1,0 +1,6 @@
+{
+    "name": "Marshmallow Deploy Workflow",
+    "description": "Marshmallow Deploy workflow template.",
+    "iconName": "deploy-production-icon",
+    "categories": ["php"]
+}
